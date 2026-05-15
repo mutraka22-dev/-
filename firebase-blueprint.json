@@ -1,0 +1,105 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "role": { "type": "string", "enum": ["customer", "driver", "merchant", "admin"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "name", "role"]
+    },
+    "Merchant": {
+      "title": "Merchant Store",
+      "description": "Store information",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string", "enum": ["fast_food", "traditional", "grocery", "pharmacy", "other"] },
+        "address": { "type": "string" },
+        "location": { "type": "object" },
+        "image": { "type": "string" },
+        "rating": { "type": "number" }
+      },
+      "required": ["ownerId", "name", "category"]
+    },
+    "Product": {
+      "title": "Store Product",
+      "description": "Item sold by a merchant",
+      "type": "object",
+      "properties": {
+        "merchantId": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "price": { "type": "number" },
+        "image": { "type": "string" },
+        "category": { "type": "string" }
+      },
+      "required": ["merchantId", "name", "price"]
+    },
+    "Order": {
+      "title": "Delivery Order",
+      "description": "Order or delivery request",
+      "type": "object",
+      "properties": {
+        "customerId": { "type": "string" },
+        "driverId": { "type": "string" },
+        "merchantId": { "type": "string" },
+        "type": { "type": "string", "enum": ["food", "parcel", "buy_for_me"] },
+        "status": { "type": "string", "enum": ["pending", "accepted", "preparing", "out_for_delivery", "delivered", "cancelled"] },
+        "items": { "type": "array" },
+        "parcelInfo": { "type": "object" },
+        "buyForMeRequest": { "type": "string" },
+        "pickupLocation": { "type": "object" },
+        "deliveryLocation": { "type": "object" },
+        "totalPrice": { "type": "number" },
+        "eta": { "type": "number" },
+        "verificationCode": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["customerId", "type", "status", "createdAt"]
+    },
+    "DriverTracking": {
+      "title": "Driver Track",
+      "description": "Real-time driver location",
+      "type": "object",
+      "properties": {
+        "driverId": { "type": "string" },
+        "location": { "type": "object" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "isAvailable": { "type": "boolean" }
+      },
+      "required": ["driverId", "location", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "merchants/{merchantId}": {
+      "schema": "Merchant",
+      "description": "Merchant stores"
+    },
+    "merchants/{merchantId}/products/{productId}": {
+      "schema": "Product",
+      "description": "Store products"
+    },
+    "orders/{orderId}": {
+      "schema": "Order",
+      "description": "Customer orders and delivery requests"
+    },
+    "tracking/{driverId}": {
+      "schema": "DriverTracking",
+      "description": "Real-time driver tracking data"
+    }
+  }
+}

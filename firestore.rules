@@ -1,0 +1,137 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // -------------------------------------------------------------------------
+    // GLOBAL HELPERS
+    // -------------------------------------------------------------------------
+    function isSignedIn() { return request.auth != null; }
+    function isEmailVerified() { return request.auth.token.email_verified == true; }
+    
+    // Auth tokens NEVER contain custom roles. We use user email for admin and look up profiles for others.
+    function isAdmin() { 
+      return isSignedIn() && 
+             request.auth.token.email == 'mutraka22@gmail.com' && 
+             isEmailVerified(); 
+    }
+    
+    function isOwner(uid) { return isSignedIn() && request.auth.uid == uid; }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+
+    // -------------------------------------------------------------------------
+    // VALIDATION BLUEPRINTS
+    // -------------------------------------------------------------------------
+    function isValidUser(data) {
+      return data.uid == request.auth.uid &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.role in ['customer', 'driver', 'merchant'] &&
+             (!('phone' in data) || (data.phone is string && data.phone.size() <= 20)) &&
+             (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 1024));
+    }
+
+    function isValidMerchant(data) {
+      return data.ownerId == request.auth.uid &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.category in ['fast_food', 'traditional', 'grocery', 'pharmacy', 'other'] &&
+             data.address is string && data.address.size() <= 200 &&
+             data.location is map && data.location.keys().hasAll(['lat', 'lng']);
+    }
+
+    function isValidProduct(data, merchantId) {
+      return data.merchantId == merchantId &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.price is number && data.price >= 0 &&
+             (!('image' in data) || (data.image is string && data.image.size() <= 1024));
+    }
+
+    function isValidOrder(data) {
+      return data.customerId == request.auth.uid &&
+             data.status == 'pending' &&
+             data.type in ['food', 'parcel', 'buy_for_me'] &&
+             data.totalPrice is number && data.totalPrice >= 0 &&
+             data.createdAt == request.time &&
+             data.updatedAt == request.time;
+    }
+
+    function isValidTracking(data, driverId) {
+      return driverId == request.auth.uid &&
+             data.driverId == request.auth.uid &&
+             data.location is map && data.location.keys().hasAll(['lat', 'lng']) &&
+             data.updatedAt == request.time;
+    }
+
+    // -------------------------------------------------------------------------
+    // DEFAULT DENY
+    // -------------------------------------------------------------------------
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // COLLECTIONS
+    // -------------------------------------------------------------------------
+
+    // USERS
+    match /users/{userId} {
+      allow get: if isSignedIn();
+      allow list: if isAdmin();
+      allow create: if isOwner(userId) && isValidUser(incoming()) && 
+                    incoming().keys().hasAll(['uid', 'name', 'role']) && 
+                    incoming().keys().size() <= 8;
+      allow update: if isOwner(userId) && isValidUser(incoming()) && 
+                    incoming().diff(existing()).affectedKeys().hasOnly(['name', 'phone', 'photoURL', 'updatedAt']);
+    }
+
+    // MERCHANTS
+    match /merchants/{merchantId} {
+      allow read: if true;
+      allow create: if isSignedIn() && isValidMerchant(incoming()) && isValidId(merchantId);
+      allow update: if (isOwner(existing().ownerId) || isAdmin()) && isValidMerchant(incoming()) &&
+                    incoming().diff(existing()).affectedKeys().hasOnly(['name', 'category', 'address', 'location', 'image', 'rating']);
+    }
+
+    match /merchants/{merchantId}/products/{productId} {
+      function isMerchantOwner() {
+        return isSignedIn() && isOwner(get(/databases/$(database)/documents/merchants/$(merchantId)).data.ownerId);
+      }
+      allow read: if true;
+      allow write: if isMerchantOwner() || isAdmin();
+    }
+
+    // ORDERS
+    match /orders/{orderId} {
+      function isOrderParty() {
+        return isSignedIn() && (
+          request.auth.uid == existing().customerId ||
+          request.auth.uid == existing().driverId ||
+          (existing().merchantId != null && request.auth.uid == get(/databases/$(database)/documents/merchants/$(existing().merchantId)).data.ownerId)
+        );
+      }
+
+      function isTerminalState() {
+        return existing().status in ['delivered', 'cancelled'];
+      }
+
+      allow get: if isOrderParty() || isAdmin();
+      allow list: if isSignedIn() && (resource.data.customerId == request.auth.uid || resource.data.driverId == request.auth.uid || isAdmin());
+      
+      allow create: if isSignedIn() && isValidOrder(incoming()) && isValidId(orderId);
+      
+      allow update: if (isOrderParty() || isAdmin()) && !isTerminalState() && (
+        // Action: Driver accepts/updates
+        (incoming().diff(existing()).affectedKeys().hasOnly(['driverId', 'status', 'updatedAt', 'eta'])) ||
+        // Action: Merchant updates status
+        (incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])) ||
+        // Action: Customer cancels
+        (isOwner(existing().customerId) && incoming().status == 'cancelled' && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']))
+      );
+    }
+
+    // TRACKING
+    match /tracking/{driverId} {
+      allow read: if isSignedIn(); // Customers/Merchants track their driver
+      allow write: if (isOwner(driverId) || isAdmin()) && isValidTracking(incoming(), driverId);
+    }
+  }
+}

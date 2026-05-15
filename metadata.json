@@ -1,0 +1,12 @@
+{
+  "name": "بصرة إكسبريس - Basra Express",
+  "description": "تطبيق شامل لسوق البصرة يوفر خدمات توصيل الطعام، الخدمات اللوجستية، وخدمات المندوب الشخصي.",
+  "requestFramePermissions": [
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "firebase",
+    "google-maps",
+    "real-time"
+  ]
+}
